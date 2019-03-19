@@ -5,7 +5,6 @@
  *  that can be found in the LICENSE file in the root of the source
  *  tree.
  */
-/* eslint-env node */
 const EventEmitter = require('events');
 
 module.exports = function(window) {
@@ -33,11 +32,6 @@ module.exports = function(window) {
     this.component = 'rtp';
 
     this._emitter = new EventEmitter();
-    this.addEventListener = this._emitter.addListener.bind(this);
-    this.removeEventListener = this._emitter.removeListener.bind(this);
-    this.dispatchEvent = (ev) => {
-      this._emitter.emit(ev.type, ev);
-    };
 
     let candidates = [
       {
@@ -52,14 +46,12 @@ module.exports = function(window) {
     ];
     this._emittedCandidates = [];
     let emitCandidate = () => {
-      let e = new Event('RTCIceGatherEvent');
+      let e = new Event('localcandidate');
       e.candidate = candidates.shift();
       if (Object.keys(e.candidate).length) {
         this._emittedCandidates.push(e.candidate);
       }
-      if (this.onlocalcandidate) {
-        this.onlocalcandidate(e);
-      }
+      this.dispatchEvent(e);
       if (candidates.length) {
         setTimeout(emitCandidate, 50);
       }
@@ -67,6 +59,20 @@ module.exports = function(window) {
     setTimeout(emitCandidate, 50);
   };
 
+  RTCIceGatherer.prototype.addEventListener = function() {
+    return this._emitter.addListener.apply(this._emitter, arguments);
+  };
+
+  RTCIceGatherer.prototype.removeEventListener = function() {
+    return this._emitter.removeListener.apply(this._emitter, arguments);
+  };
+
+  RTCIceGatherer.prototype.dispatchEvent = function(ev) {
+    this._emitter.emit(ev.type, ev);
+    if (this['on' + ev.type]) {
+      this['on' + ev.type](ev);
+    }
+  };
   RTCIceGatherer.prototype.getLocalCandidates = function() {
     return this._emittedCandidates;
   };
@@ -82,12 +88,28 @@ module.exports = function(window) {
   };
   window.RTCIceGatherer = RTCIceGatherer;
 
-  const RTCIceTransport = function() {
+  const RTCIceTransport = function(iceGatherer) {
+    this.iceGatherer = iceGatherer;
+
     this._remoteCandidates = [];
     this.state = 'new';
+
+    this._emitter = new EventEmitter();
+  };
+  RTCIceTransport.prototype.addEventListener = function() {
+    return this._emitter.addListener.apply(this._emitter, arguments);
+  };
+  RTCIceTransport.prototype.removeEventListener = function() {
+    return this._emitter.removeListener.apply(this._emitter, arguments);
+  };
+  RTCIceTransport.prototype.dispatchEvent = function(ev) {
+    this._emitter.emit(ev.type, ev);
+    if (this['on' + ev.type]) {
+      this['on' + ev.type](ev);
+    }
   };
   RTCIceTransport.prototype.start = function(gatherer, parameters, role) {
-    this._gatherer = gatherer;
+    this.iceGatherer = gatherer;
     this._remoteParameters = parameters;
     this._role = role || 'controlled';
     if (this._remoteCandidates.length > 0) {
@@ -97,9 +119,6 @@ module.exports = function(window) {
   RTCIceTransport.prototype.addRemoteCandidate = function(remoteCandidate) {
     if (Object.keys(remoteCandidate).length) {
       this._remoteCandidates.push(remoteCandidate);
-    }
-    if (this.state === 'new') {
-      this.state = 'completed'; // TODO: not accurate, should go to checking.
     }
   };
   RTCIceTransport.prototype.setRemoteCandidates = function(remoteCandidates) {
@@ -115,11 +134,28 @@ module.exports = function(window) {
   RTCIceTransport.prototype.getStats = function() {
     return Promise.resolve({});
   };
+  RTCIceTransport.prototype.getNominatedCandidatePair = function() {};
   window.RTCIceTransport = RTCIceTransport;
 
   const RTCDtlsTransport = function(transport) {
     this.transport = transport;
     this.state = 'new';
+
+    this._emitter = new EventEmitter();
+  };
+  RTCDtlsTransport.prototype.addEventListener = function() {
+    return this._emitter.addListener.apply(this._emitter, arguments);
+  };
+
+  RTCDtlsTransport.prototype.removeEventListener = function() {
+    return this._emitter.removeListener.apply(this._emitter, arguments);
+  };
+
+  RTCDtlsTransport.prototype.dispatchEvent = function(ev) {
+    this._emitter.emit(ev.type, ev);
+    if (this['on' + ev.type]) {
+      this['on' + ev.type](ev);
+    }
   };
   RTCDtlsTransport.prototype.start = function() {
     this.state = 'connected'; // TODO: not accurate.
@@ -148,7 +184,8 @@ module.exports = function(window) {
       kind: 'audio',
       clockRate: 48000,
       preferredPayloadType: 111,
-      numChannels: 2
+      numChannels: 2,
+      rtcpFeedback: [],
     };
     var vp8 = {
       name: 'vp8',
@@ -157,11 +194,11 @@ module.exports = function(window) {
       preferredPayloadType: 100,
       numChannels: 1,
       rtcpFeedback: [
-          {type: 'nack', parameter: ''},
-          {type: 'nack', parameter: 'pli'}
+        {type: 'nack', parameter: ''},
+        {type: 'nack', parameter: 'pli'}
       ]
     };
-    var rtx = {
+    var vp8rtx = {
       name: 'rtx',
       kind: 'video',
       clockRate: 90000,
@@ -169,16 +206,28 @@ module.exports = function(window) {
       numChannels: 1,
       parameters: {apt: 100}
     };
+    var h264 = {
+      name: 'h264',
+      kind: 'video',
+      clockRate: 90000,
+      preferredPayloadType: 102,
+      numChannels: 1,
+      rtcpFeedback: [
+        {type: 'nack', parameter: ''},
+        {type: 'nack', parameter: 'pli'}
+      ],
+      parameters: []
+    };
     var codecs;
     switch (kind) {
       case 'audio':
         codecs = [opus];
         break;
       case 'video':
-        codecs = [vp8, rtx];
+        codecs = [vp8, vp8rtx, h264];
         break;
       default:
-        codecs = [opus, vp8, rtx];
+        codecs = [opus, vp8, vp8rtx, h264];
         break;
     }
     var headerExtensions;
@@ -221,10 +270,20 @@ module.exports = function(window) {
     this.track = track;
     this.transport = transport;
   };
-  RTCRtpSender.prototype.send = function() {};
+  RTCRtpSender.prototype.send = function() {
+    return Promise.resolve();
+  };
   RTCRtpSender.prototype.stop = function() {};
   RTCRtpSender.prototype.setTransport = function(transport) {
     this.transport = transport;
+  };
+  RTCRtpSender.prototype.setTrack = function(track) {
+    this.track = track;
+    return Promise.resolve();
+  };
+  RTCRtpSender.prototype.replaceTrack = function(track) {
+    this.track = track;
+    return Promise.resolve();
   };
 
   RTCRtpSender.getCapabilities = getCapabilities;
@@ -236,4 +295,13 @@ module.exports = function(window) {
     return Promise.resolve();
   };
   window.RTCRtpSender = RTCRtpSender;
+
+  // http://draft.ortc.org/#rtcdtmfsender*
+  const RTCDtmfSender = function(sender) {
+    this.sender = sender;
+    this.toneBuffer = '';
+    this.canInsertDTMF = true;
+  };
+  RTCDtmfSender.prototype.insertDTMF = function() {};
+  window.RTCDtmfSender = RTCDtmfSender;
 };

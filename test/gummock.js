@@ -1,11 +1,10 @@
 /*
- *  Copyright (c) 2017 Philipp Hancke. All Rights Reserved.
+ *  Copyright (c) 2017 rtcpeerconnection-shim authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
  *  that can be found in the LICENSE file in the root of the source
  *  tree.
  */
-/* eslint-env node */
 const EventEmitter = require('events');
 const SDPUtils = require('sdp');
 
@@ -43,6 +42,9 @@ module.exports = function(window) {
     if (idx !== -1) {
       this._tracks.splice(idx, 1);
     }
+  };
+  MediaStream.prototype.clone = function() {
+    return new MediaStream(this._tracks);
   };
 
   window.MediaStream = MediaStream;
