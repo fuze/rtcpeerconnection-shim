@@ -879,7 +879,7 @@ module.exports = function(window, edgeVersion) {
         if (SDPUtils.matchPrefix(mediaSection, 'a=setup:passive').length > 0) {
           dtlsRole = 'server';
         } else if (
-            SDPUtils.matchPrefix(mediaSection, 'a=setup:active').length > 0) {
+          SDPUtils.matchPrefix(mediaSection, 'a=setup:active').length > 0) {
           dtlsRole = 'client';
         } else {
           dtlsRole = 'auto';
