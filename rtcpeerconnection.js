@@ -876,12 +876,13 @@ module.exports = function(window, edgeVersion) {
         remoteDtlsParameters = SDPUtils.getDtlsParameters(mediaSection,
           sessionpart);
         var dtlsRole;
-        if (SDPUtils.matchPrefix(mediaSection, "a=setup:passive").length > 0) {
-            dtlsRole = 'server';
-        } else if (SDPUtils.matchPrefix(mediaSection, "a=setup:active").length > 0) {
-            dtlsRole = 'client';
+        if (SDPUtils.matchPrefix(mediaSection, 'a=setup:passive').length > 0) {
+          dtlsRole = 'server';
+        } else if (
+            SDPUtils.matchPrefix(mediaSection, 'a=setup:active').length > 0) {
+          dtlsRole = 'client';
         } else {
-            dtlsRole = 'auto';
+          dtlsRole = 'auto';
         }
         remoteDtlsParameters.role = dtlsRole;
       }
